@@ -10,7 +10,7 @@ body {
 
 .wrapper {
   max-width: 960px;
-  width: 100%; 
+  width: 100%;
   margin: 30px auto;
   transform: scale(0.8);
 }
@@ -47,7 +47,7 @@ h1 {
 
 p {
   font-size: 18px;
-  width: 35%; 
+  width: 35%;
   margin: 16px auto 24px;
   text-align: center;
 }

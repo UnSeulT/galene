@@ -24,7 +24,7 @@ document.getElementById('groupform').onsubmit = function(e) {
     e.preventDefault();
     let group = document.getElementById('group').value.trim();
     if(group !== '')
-        location.href = '/group/' + group;
+        location.href = '/group/a7/' + group;
 };
 
 async function listPublicGroups() {

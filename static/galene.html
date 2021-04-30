@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
   <head>
-    <title>Galène</title>
+    <title>Visio L'atelier 7</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="ScreenOrientation" content="autoRotate:disabled">
@@ -20,7 +20,7 @@
       <div class="row full-height">
         <nav id="left-sidebar">
           <div class="users-header">
-            <div class="galene-header">Galène</div>
+            <div class="galene-header">Participants</div>
           </div>
           <div class="header-sep"></div>
           <div id="users"></div>
@@ -34,36 +34,46 @@
                     <path fill="currentColor" d="M288 44v40c0 8.837-7.163 16-16 16H16c-8.837 0-16-7.163-16-16V44c0-8.837 7.163-16 16-16h256c8.837 0 16 7.163 16 16zM0 172v40c0 8.837 7.163 16 16 16h416c8.837 0 16-7.163 16-16v-40c0-8.837-7.163-16-16-16H16c-8.837 0-16 7.163-16 16zm16 312h416c8.837 0 16-7.163 16-16v-40c0-8.837-7.163-16-16-16H16c-8.837 0-16 7.163-16 16v40c0 8.837 7.163 16 16 16zm256-200H16c-8.837 0-16 7.163-16 16v40c0 8.837 7.163 16 16 16h256c8.837 0 16-7.163 16-16v-40c0-8.837-7.163-16-16-16z"></path>
                   </svg>
                 </div>
-                <h1 id="title" class="header-title">Galène</h1>
+                <h1 id="title" class="header-title">L'atelier 7</h1>
               </div>
 
               <ul class="nav-menu">
                 <li>
+                  <div id="unlockbutton" class="invisible muted nav-link nav-button">
+                    <span><i class="fas fa-users-slash" aria-hidden="false"></i></span>
+                    <label>Locked</label>
+                  </div>
+                </li>
+              </ul>
+              <ul class="nav-menu">
+                <li>
                   <button id="presentbutton" class="invisible btn btn-success">
-                    <i class="fas fa-play" aria-hidden="true"></i><span class="nav-text"> Ready</span>
+                    <i class="fas fa-video-slash" aria-hidden="true"></i>
+                    <span class="nav-text">Démarrer</span>
                   </button>
                 </li>
                 <li>
                   <button id="unpresentbutton" class="invisible btn btn-cancel">
-                    <i class="fas fa-stop" aria-hidden="true"></i><span class="nav-text"> Panic</span>
+                    <i class="fas fa-video" aria-hidden="true"></i>
+                    <span class="nav-text">Quitter</span>
                   </button>
                 </li>
                 <li>
                   <div id="mutebutton" class="nav-link nav-button">
                     <span><i class="fas fa-microphone-slash" aria-hidden="true"></i></span>
-                    <label>Mute</label>
+                    <label>Micro</label>
                   </div>
                 </li>
                 <li>
                   <div id="sharebutton" class="invisible nav-link nav-button">
                     <span><i class="fas fa-share-square" aria-hidden="true"></i></span>
-                    <label>Share Screen</label>
+                    <label>Partage d'écran</label>
                   </div>
                 </li>
                 <li>
                   <div id="unsharebutton" class="invisible nav-link nav-button nav-cancel">
                     <span><i class="fas fa-window-close" aria-hidden="true"></i></span>
-                    <label>Unshare Screen</label>
+                    <label>Arrêter le partage</label>
                   </div>
                 </li>
                 <li>
@@ -116,33 +126,36 @@
               <div class="login-container invisible" id="login-container">
                 <div class="login-box">
                   <form id="userform" class="userform">
-                    <label for="username">Username</label>
+                    <label for="username">Nom</label>
                     <input id="username" type="text" name="username"
                            autocomplete="username" class="form-control"/>
-                    <label for="password">Password</label>
-                    <input id="password" type="password" name="password"
-                           autocomplete="current-password" class="form-control"/>
-                    <label>Auto ready</label>
+                    <label>Périphériques activés en entrant :</label>
                     <div class="present-switch">
                       <p class="switch-radio">
                         <input id="presentoff" type="radio" name="presentradio" value="" checked/>
-                        <label for="presentoff">Disabled</label>
+                        <label for="presentoff">Aucun</label>
                       </p>
                       <p class="switch-radio">
                         <input id="presentmike" type="radio" name="presentradio" value="mike"/>
-                        <label for="presentmike">Enable microphone</label>
+                        <label for="presentmike">Microphone</label>
                       </p>
                       <p class="switch-radio">
                         <input id="presentboth" type="radio" name="presentradio" value="both"/>
-                        <label for="presentboth">Enable camera and microphone</label>
+                        <label for="presentboth">Caméra et microphone</label>
                       </p>
                     </div>
-                    <div class="clear"></div>
                     <div class="connect">
-                      <input id="connectbutton" type="submit" class="btn btn-blue" value="Connect"/>
+                      <input id="connectbutton" type="submit" class="btn btn-blue" value="Se connecter"/>
+                    </div>
+                     <p>
+                     <a href="#" id="passwordlabel">Mot de passe pour les administrateurs</a>
+                     </p>
+                     <div id="passwordbloc" class="invisible">
+                         <label for="password">Mot de passe<br></label>
+                         <input id="password" type="password" name="password"
+                            autocomplete="current-password" class="form-control"/>
                     </div>
                   </form>
-                  <div class="clear"></div>
                 </div>
               </div>
             </div>
@@ -153,7 +166,7 @@
 
     <div id="sidebarnav" class="sidenav">
       <div class="sidenav-header">
-        <h2>Settings</h2>
+        <h2>Paramètres</h2>
         <a class="closebtn" id="clodeside"><i class="fas fa-times" aria-hidden="true"></i></a>
       </div>
       <div class="sidenav-content" id="optionsdiv">
@@ -169,7 +182,7 @@
             <div class="user-logout">
               <a id="disconnectbutton">
                 <span class="logout-icon"><i class="fas fa-sign-out-alt"></i></span>
-                <span class="logout-text">Logout</span>
+                <span class="logout-text">Déconnexion</span>
               </a>
             </div>
           </div>
@@ -181,7 +194,7 @@
             <select id="videoselect" class="select select-inline">
               <option value="">off</option>
             </select>
-  
+
             <label for="audioselect" class="sidenav-label">Microphone:</label>
             <select id="audioselect" class="select select-inline">
               <option value="">off</option>
@@ -196,7 +209,7 @@
               <input id="blackboardbox" type="checkbox"/>
               <label for="blackboardbox">Blackboard mode</label>
             </form>
-  
+
           </fieldset>
         </div>
 
@@ -229,7 +242,7 @@
               <option value="everything" selected>everything</option>
             </select>
           </form>
-  
+
           <form>
             <input id="activitybox" type="checkbox"/>
             <label for="activitybox">Activity detection</label>

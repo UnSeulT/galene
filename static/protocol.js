@@ -61,13 +61,6 @@ function newLocalId() {
 }
 
 /**
- * @typedef {Object} user
- * @property {string} username
- * @property {Object<string,boolean>} permissions
- * @property {Object<string,any>} status
- */
-
-/**
  * ServerConnection encapsulates a websocket connection to the server and
  * all the associated streams.
  * @constructor
@@ -88,16 +81,8 @@ function ServerConnection() {
     this.group = null;
     /**
      * The username we joined as.
-     *
-     * @type {string}
      */
     this.username = null;
-    /**
-     * The set of users in this group, including ourself.
-     *
-     * @type {Object<string,user>}
-     */
-    this.users = {};
     /**
      * The underlying websocket.
      *
@@ -151,10 +136,9 @@ function ServerConnection() {
      */
     this.onclose = null;
     /**
-     * onuser is called whenever a user in the group changes.  The users
-     * array has already been updated.
+     * onuser is called whenever a user is added or removed from the group
      *
-     * @type{(this: ServerConnection, id: string, kind: string) => void}
+     * @type{(this: ServerConnection, id: string, kind: string, username: string) => void}
      */
     this.onuser = null;
     /**
@@ -206,7 +190,6 @@ function ServerConnection() {
   * @property {string} [password]
   * @property {boolean} [privileged]
   * @property {Object<string,boolean>} [permissions]
-  * @property {Object<string,any>} [status]
   * @property {string} [group]
   * @property {unknown} [value]
   * @property {boolean} [noecho]
@@ -277,11 +260,6 @@ ServerConnection.prototype.connect = async function(url) {
                 let c = sc.down[id];
                 c.close();
             }
-            for(let id in sc.users) {
-                delete(sc.users[id]);
-                if(sc.onuser)
-                    sc.onuser.call(sc, id, 'delete');
-            }
             if(sc.group && sc.onjoined)
                 sc.onjoined.call(sc, 'leave', sc.group, {}, '');
             sc.group = null;
@@ -325,54 +303,14 @@ ServerConnection.prototype.connect = async function(url) {
                 sc.username = m.username;
                 sc.permissions = m.permissions || [];
                 sc.rtcConfiguration = m.rtcConfiguration || null;
-                if(m.kind == 'leave') {
-                    for(let id in sc.users) {
-                        delete(sc.users[id]);
-                        if(sc.onuser)
-                            sc.onuser.call(sc, id, 'delete');
-                    }
-                }
                 if(sc.onjoined)
                     sc.onjoined.call(sc, m.kind, m.group,
                                      m.permissions || {},
                                      m.value || null);
                 break;
             case 'user':
-                switch(m.kind) {
-                case 'add':
-                    if(m.id in sc.users)
-                        console.warn(`Duplicate user ${m.id} ${m.username}`);
-                    sc.users[m.id] = {
-                        username: m.username,
-                        permissions: m.permissions || {},
-                        status: m.status || {},
-                    };
-                    break;
-                case 'change':
-                    if(!(m.id in sc.users)) {
-                        console.warn(`Unknown user ${m.id} ${m.username}`);
-                        sc.users[m.id] = {
-                            username: m.username,
-                            permissions: m.permissions || {},
-                            status: m.status || {},
-                        };
-                    } else {
-                        sc.users[m.id].username = m.username;
-                        sc.users[m.id].permissions = m.permissions || {};
-                        sc.users[m.id].status = m.status || {};
-                    }
-                    break;
-                case 'delete':
-                    if(!(m.id in sc.users))
-                        console.warn(`Unknown user ${m.id} ${m.username}`);
-                    delete(sc.users[m.id]);
-                    break;
-                default:
-                    console.warn(`Unknown user action ${m.kind}`);
-                    return;
-                }
                 if(sc.onuser)
-                    sc.onuser.call(sc, m.id, m.kind);
+                    sc.onuser.call(sc, m.id, m.kind, m.username);
                 break;
             case 'chat':
                 if(sc.onchat)
@@ -472,15 +410,14 @@ ServerConnection.prototype.request = function(what) {
  * @param {string} localId
  * @returns {Stream}
  */
+
 ServerConnection.prototype.findByLocalId = function(localId) {
     if(!localId)
         return null;
 
-    let sc = this;
-
-    for(let id in sc.up) {
-        let s = sc.up[id];
-        if(s.localId === localId)
+    for(let id in serverConnection.up) {
+        let s = serverConnection.up[id];
+        if(s.localId == localId)
             return s;
     }
     return null;
@@ -567,7 +504,7 @@ ServerConnection.prototype.chat = function(kind, dest, value) {
  *
  * @param {string} kind - One of "op", "unop", "kick", "present", "unpresent".
  * @param {string} dest - The id of the user to act upon.
- * @param {any} [value] - An action-dependent parameter.
+ * @param {string} [value] - An optional user-readable message.
  */
 ServerConnection.prototype.userAction = function(kind, dest, value) {
     this.send({
@@ -791,7 +728,7 @@ ServerConnection.prototype.gotAnswer = async function(id, sdp) {
  * @param {string} id
  * @function
  */
-ServerConnection.prototype.gotRenegotiate = function(id) {
+ServerConnection.prototype.gotRenegotiate = async function(id) {
     let c = this.up[id];
     if(!c)
         throw new Error('unknown up stream');
@@ -819,7 +756,8 @@ ServerConnection.prototype.gotAbort = function(id) {
     let c = this.up[id];
     if(!c)
         throw new Error('unknown up stream');
-    c.close();
+    if(c.onabort)
+        c.onabort.call(c);
 };
 
 /**
@@ -1013,6 +951,13 @@ function Stream(sc, id, localId, pc, up) {
      * @type{(this: Stream, status: string) => void}
      */
     this.onstatus = null;
+    /**
+     * onabort is called when the server requested that an up stream be
+     * closed.  It is the resposibility of the client to close the stream.
+     *
+     * @type{(this: Stream) => void}
+     */
+    this.onabort = null;
     /**
      * onstats is called when we have new statistics about the connection
      *

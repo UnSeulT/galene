@@ -293,11 +293,13 @@ function setConnected(connected) {
     let userbox = document.getElementById('profile');
     let connectionbox = document.getElementById('login-container');
     if(connected) {
+        resetUsers();
         clearChat();
         userbox.classList.remove('invisible');
         connectionbox.classList.add('invisible');
         displayUsername();
     } else {
+        resetUsers();
         fillLogin();
         userbox.classList.add('invisible');
         connectionbox.classList.remove('invisible');
@@ -430,6 +432,7 @@ function setButtonsVisibility() {
         !!HTMLVideoElement.prototype.mozCaptureStream;
     let mediacount = document.getElementById('peers').childElementCount;
     let mobilelayout = isMobileLayout();
+    // let autolock = !(group === 'latelier7');
 
     // don't allow multiple presentations
     setVisibility('presentbutton', canWebrtc && permissions.present && !local);
@@ -449,6 +452,8 @@ function setButtonsVisibility() {
     setVisibility('fileform', canFile && permissions.present);
 
     setVisibility('collapse-video', mediacount && mobilelayout);
+
+    // setVisibility('unlockbutton', permissions.op && autolock);
 }
 
 /**
@@ -1652,6 +1657,9 @@ function resizePeers() {
     }
 }
 
+/** @type{Object<string,string>} */
+let users = {};
+
 /**
  * Lexicographic order, with case differences secondary.
  * @param{string} a
@@ -1678,6 +1686,9 @@ function stringCompare(a, b) {
 function addUser(id, name) {
     if(!name)
         name = null;
+    if(id in users)
+        throw new Error('Duplicate user id');
+    users[id] = name;
 
     let div = document.getElementById('users');
     let user = document.createElement('div');
@@ -1686,12 +1697,14 @@ function addUser(id, name) {
     user.textContent = name ? name : '(anon)';
 
     if(name) {
+        user.onclick = function(e){
+            e.preventDefault();
+            writeInChatInput('@' + name + ' ');
+        }
         let us = div.children;
         for(let i = 0; i < us.length; i++) {
             let child = us[i];
-            let childuser =
-                serverConnection.users[child.id.slice('user-'.length)] || null;
-            let childname = (childuser && childuser.username) || null;
+            let childname = users[child.id.slice('user-'.length)] || null;
             if(!childname || stringCompare(childname, name) > 0) {
                 div.insertBefore(user, child);
                 return;
@@ -1705,38 +1718,36 @@ function addUser(id, name) {
  * @param {string} id
  * @param {string} name
  */
-function changeUser(id, name) {
-    let user = document.getElementById('user-' + id);
-    if(!user) {
-        console.warn('Unknown user ' + id);
-        return;
-    }
-    user.textContent = name ? name : '(anon)';
-}
-
-/**
- * @param {string} id
- */
-function delUser(id) {
+function delUser(id, name) {
+    if(!name)
+        name = null;
+    if(!(id in users))
+        throw new Error('Unknown user id');
+    if(users[id] !== name)
+        throw new Error('Inconsistent user name');
+    delete(users[id]);
     let div = document.getElementById('users');
     let user = document.getElementById('user-' + id);
     div.removeChild(user);
 }
 
+function resetUsers() {
+    for(let id in users)
+        delUser(id, users[id]);
+}
+
 /**
  * @param {string} id
  * @param {string} kind
+ * @param {string} name
  */
-function gotUser(id, kind) {
+function gotUser(id, kind, name) {
     switch(kind) {
     case 'add':
-        addUser(id, serverConnection.users[id].username);
+        addUser(id, name);
         break;
     case 'delete':
-        delUser(id);
-        break;
-    case 'change':
-        changeUser(id, serverConnection.users[id].username);
+        delUser(id, name);
         break;
     default:
         console.warn('Unknown user kind', kind);
@@ -1798,7 +1809,7 @@ async function gotJoined(kind, group, perms, message) {
 
     let input = /** @type{HTMLTextAreaElement} */
         (document.getElementById('input'));
-    input.placeholder = 'Type /help for help';
+    input.placeholder = 'Type /? or /help for help';
     setTimeout(() => {input.placeholder = '';}, 8000);
 
     if(typeof RTCPeerConnection === 'undefined')
@@ -1941,6 +1952,15 @@ function formatTime(time) {
 let lastMessage = {};
 
 /**
+ * @param {string} msg
+ */
+ function writeInChatInput(msg){
+    let inputChat = document.getElementById('input');
+    inputChat.value = msg;
+    inputChat.focus();
+}
+
+/**
  * @param {string} peerId
  * @param {string} nick
  * @param {number} time
@@ -1982,10 +2002,8 @@ function addToChatbox(peerId, dest, nick, time, privileged, kind, message) {
             let header = document.createElement('p');
             if(peerId || nick || dest) {
                 let user = document.createElement('span');
-                let u = serverConnection.users[dest];
-                let name = (u && u.username);
                 user.textContent = dest ?
-                    `${nick||'(anon)'} \u2192 ${name || '(anon)'}` :
+                    `${nick||'(anon)'} \u2192 ${users[dest]||'(anon)'}` :
                     (nick || '(anon)');
                 user.classList.add('message-user');
                 header.appendChild(user);
@@ -2051,6 +2069,10 @@ function clearChat() {
  * A command known to the command-line parser.
  *
  * @typedef {Object} command
+ * @property {string} [trigger]
+ *     - The character triggering the command, '/' if undocumented
+ * @property {string} [alias]
+ *     - A user-readable alias for the command, null if undocumented.
  * @property {string} [parameters]
  *     - A user-readable list of parameters.
  * @property {string} [description]
@@ -2082,17 +2104,20 @@ function recordingPredicate() {
 }
 
 commands.help = {
+    alias: '?',
     description: 'display this help',
     f: (c, r) => {
         /** @type {string[]} */
         let cs = [];
         for(let cmd in commands) {
             let c = commands[cmd];
+            let trigger = c.trigger ? c.trigger : "/";
+            let alias = c.alias ? " or " + trigger + c.alias : '';
             if(!c.description)
                 continue;
             if(c.predicate && c.predicate())
                 continue;
-            cs.push(`/${cmd}${c.parameters?' ' + c.parameters:''}: ${c.description}`);
+            cs.push(`${trigger}${cmd}${alias}${c.parameters?' ' + c.parameters:''}: ${c.description}`);
         }
         cs.sort();
         let s = '';
@@ -2244,24 +2269,24 @@ function parseCommand(line) {
  * @param {string} user
  */
 function findUserId(user) {
-    if(user in serverConnection.users)
+    if(user in users)
         return user;
 
-    for(let id in serverConnection.users) {
-        let u = serverConnection.users[id];
-        if(u && u.username === user)
+    for(let id in users) {
+        if(users[id] === user)
             return id;
     }
     return null;
 }
 
-commands.msg = {
-    parameters: 'user message',
+commands.username = {
+    trigger: '@',
+    parameters: 'message',
     description: 'send a private message',
     f: (c, r) => {
         let p = parseCommand(r);
         if(!p[0])
-            throw new Error('/msg requires parameters');
+            throw new Error('this command requires parameters');
         let id = findUserId(p[0]);
         if(!id)
             throw new Error(`Unknown user ${p[0]}`);
@@ -2365,24 +2390,6 @@ commands.wall = {
     },
 };
 
-commands.raise = {
-    description: 'raise hand',
-    f: (c, r) => {
-        serverConnection.userAction(
-            "setstatus", serverConnection.id, {"raisehand": true},
-        );
-    }
-}
-
-commands.unraise = {
-    description: 'unraise hand',
-    f: (c, r) => {
-        serverConnection.userAction(
-            "setstatus", serverConnection.id, {"raisehand": null},
-        );
-    }
-}
-
 /**
  * Test loopback through a TURN relay.
  *
@@ -2455,7 +2462,21 @@ function handleInput() {
     if(data === '')
         return;
 
-    if(data[0] === '/') {
+    if(data[0] === '/' || data[0] === '@') {
+        if(data.length > 1 && data[1] === '?') {
+            data="/help";
+        }
+        if(data.length > 1 && data[0] === '@') {
+            let user, msg;
+            let space = data.indexOf(' ');
+            if(space < 0) {
+                data = data.slice(1);
+            } else {
+                user = data.slice(1, space);
+                msg = data.slice(space + 1);
+                data = user + ' ' + msg;
+            }
+        }
         if(data.length > 1 && data[1] === '/') {
             message = data.slice(1);
             me = false;
@@ -2476,7 +2497,7 @@ function handleInput() {
             } else {
                 let c = commands[cmd];
                 if(!c) {
-                    displayError(`Uknown command /${cmd}, type /help for help`);
+                    displayError(`Uknown command /${cmd}, type /? or /help for help`);
                     return;
                 }
                 if(c.predicate) {
@@ -2699,6 +2720,47 @@ document.getElementById('show-chat').onclick = function(e) {
     setVisibility('show-chat', false);
     resizePeers();
 };
+
+
+document.getElementById('passwordlabel').onclick = function(e) {
+    e.preventDefault();
+    let inputpwd = document.getElementById('passwordbloc')
+    inputpwd.classList.toggle('invisible');
+}
+
+// document.getElementById('unlockbutton').onclick = function(e) {
+//     e.preventDefault();
+//     let button = this;
+//     let icon = button.querySelector("span .fas");
+//     let label = button.querySelector("label");
+//     let locked = this.classList.contains('muted');
+
+//     let s = operatorPredicate();
+//     if(s) {
+//         displayError(s);
+//         return;
+//     }
+//     try {
+//         serverConnection.groupAction('unlock');
+//     } catch(e) {
+//         displayError(e);
+//         return;
+//     }
+
+//     locked = !locked;
+//     if(locked){
+//         icon.classList.add('fa-users-slash');
+//         icon.classList.remove('fa-users');
+//         button.classList.add('muted');
+//         label.innerHTML="Locked";
+//     } else {
+//         icon.classList.remove('fa-users-slash');
+//         icon.classList.add('fa-users');
+//         button.classList.remove('muted');
+//         label.innerHTML="Unlocked";
+//     }
+
+// };
 
 async function serverConnect() {
     if(serverConnection && serverConnection.socket)
