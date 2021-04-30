@@ -344,13 +344,7 @@ function gotDownStream(c) {
         setMedia(c, false);
     };
     c.onnegotiationcompleted = function() {
-        let found = false;
-        for(let key in c.labels) {
-            if(c.labels[key] === 'video')
-                found = true;
-        }
-        if(!found)
-            resetMedia(c);
+        resetMedia(c);
     }
     c.onstatus = function(status) {
         setMediaStatus(c);
@@ -386,7 +380,7 @@ getButtonElement('presentbutton').onclick = async function(e) {
     // button a second time before the stream is set up and the button hidden.
     button.disabled = true;
     try {
-        let id = findUpMedia('local');
+        let id = findUpMedia('camera');
         if(!id)
             await addLocalMedia();
     } finally {
@@ -396,12 +390,12 @@ getButtonElement('presentbutton').onclick = async function(e) {
 
 getButtonElement('unpresentbutton').onclick = function(e) {
     e.preventDefault();
-    closeUpMediaKind('local');
+    closeUpMedia('camera');
     resizePeers();
 };
 
 function changePresentation() {
-    let c = findUpMedia('local');
+    let c = findUpMedia('camera');
     if(c)
         addLocalMedia(c.localId);
 }
@@ -421,8 +415,7 @@ function setVisibility(id, visible) {
 function setButtonsVisibility() {
     let connected = serverConnection && serverConnection.socket;
     let permissions = serverConnection.permissions;
-    let local = !!findUpMedia('local');
-    let share = !!findUpMedia('screenshare');
+    let local = !!findUpMedia('camera');
     let video = !!findUpMedia('video');
     let canWebrtc = !(typeof RTCPeerConnection === 'undefined');
     let canFile =
@@ -443,7 +436,6 @@ function setButtonsVisibility() {
     // allow multiple shared documents
     setVisibility('sharebutton', canWebrtc && permissions.present &&
                   ('getDisplayMedia' in navigator.mediaDevices));
-    setVisibility('unsharebutton', share);
 
     setVisibility('stopvideobutton', video);
 
@@ -521,15 +513,9 @@ document.getElementById('sharebutton').onclick = function(e) {
     addShareMedia();
 };
 
-document.getElementById('unsharebutton').onclick = function(e) {
-    e.preventDefault();
-    closeUpMediaKind('screenshare');
-    resizePeers();
-};
-
 document.getElementById('stopvideobutton').onclick = function(e) {
     e.preventDefault();
-    closeUpMediaKind('video');
+    closeUpMedia('video');
     resizePeers();
 };
 
@@ -569,12 +555,37 @@ getSelectElement('sendselect').onchange = async function(e) {
     }
 };
 
+/**
+ * @param {string} what
+ * @returns {Object<string,Array<string>>}
+ */
+
+function mapRequest(what) {
+    switch(what) {
+    case '':
+        return {};
+        break;
+    case 'audio':
+        return {'': ['audio']};
+        break;
+    case 'screenshare':
+        return {screenshare: ['audio','video'], '': ['audio']};
+        break;
+    case 'everything':
+        return {'': ['audio','video']}
+        break;
+    default:
+        displayError(`Unknown value ${what} in request`);
+        return {};
+    }
+}
+
 getSelectElement('requestselect').onchange = function(e) {
     e.preventDefault();
     if(!(this instanceof HTMLSelectElement))
         throw new Error('Unexpected type for this');
     updateSettings({request: this.value});
-    serverConnection.request(this.value);
+    serverConnection.request(mapRequest(this.value));
 };
 
 const activityDetectionInterval = 200;
@@ -798,9 +809,6 @@ function newUpStream(localId) {
     c.onerror = function(e) {
         console.error(e);
         displayError(e);
-    };
-    c.onnegotiationcompleted = function() {
-        setMaxVideoThroughput(c, getMaxVideoThroughput());
     };
     return c;
 }
@@ -1027,6 +1035,25 @@ function isSafari() {
 }
 
 /**
+ * @param {Stream} c
+ * @param {MediaStreamTrack} t
+ * @param {MediaStream} stream
+ */
+function addUpTrack(c, t, stream) {
+    let encodings = [{}];
+    if(t.kind === 'video') {
+        let bps = getMaxVideoThroughput();
+        if(bps > 0)
+            encodings[0].maxBitrate = bps;
+    }
+    c.pc.addTransceiver(t, {
+        direction: 'sendonly',
+        streams: [stream],
+        sendEncodings: encodings,
+    });
+}
+
+/**
  * @param {string} [localId]
  */
 async function addLocalMedia(localId) {
@@ -1082,8 +1109,8 @@ async function addLocalMedia(localId) {
         return;
     }
 
-    c.kind = 'local';
     c.stream = stream;
+    c.label = 'camera';
 
     if(filter) {
         try {
@@ -1113,7 +1140,6 @@ async function addLocalMedia(localId) {
 
     let mute = getSettings().localMute;
     c.stream.getTracks().forEach(t => {
-        c.labels[t.id] = t.kind;
         if(t.kind == 'audio') {
             if(mute)
                 t.enabled = false;
@@ -1123,7 +1149,7 @@ async function addLocalMedia(localId) {
                 t.contentHint = 'detail';
             }
         }
-        c.pc.addTrack(t, stream);
+        addUpTrack(c, t, stream);
     });
 
     c.onstats = gotUpStats;
@@ -1156,17 +1182,16 @@ async function addShareMedia() {
     }
 
     let c = newUpStream();
-    c.kind = 'screenshare';
     c.stream = stream;
+    c.label = 'screenshare';
     c.onclose = replace => {
         stopStream(stream);
         if(!replace)
             delMedia(c.localId);
     }
     stream.getTracks().forEach(t => {
-        c.pc.addTrack(t, stream);
+        addUpTrack(c, t, stream)
         t.onended = e => c.close();
-        c.labels[t.id] = 'screenshare';
     });
     c.onstats = gotUpStats;
     c.setStatsInterval(2000);
@@ -1197,8 +1222,8 @@ async function addFileMedia(file) {
     }
 
     let c = newUpStream();
-    c.kind = 'video';
     c.stream = stream;
+    c.label = 'video';
     c.onclose = function(replace) {
         stopStream(c.stream);
         let media = /** @type{HTMLVideoElement} */
@@ -1214,21 +1239,19 @@ async function addFileMedia(file) {
     stream.onaddtrack = function(e) {
         let t = e.track;
         if(t.kind === 'audio') {
-            let presenting = !!findUpMedia('local');
+            let presenting = !!findUpMedia('camera');
             let muted = getSettings().localMute;
             if(presenting && !muted) {
                 setLocalMute(true, true);
                 displayWarning('You have been muted');
             }
         }
-        c.pc.addTrack(t, stream);
-        c.labels[t.id] = t.kind;
+        addUpTrack(c, t, stream);
         c.onstats = gotUpStats;
         c.setStatsInterval(2000);
     };
     stream.onremovetrack = function(e) {
         let t = e.track;
-        delete(c.labels[t.id]);
 
         /** @type {RTCRtpSender} */
         let sender;
@@ -1242,7 +1265,12 @@ async function addFileMedia(file) {
             console.warn('Removing unknown track');
         }
 
-        if(Object.keys(c.labels).length === 0) {
+        let found = false;
+        c.pc.getSenders().forEach(s => {
+            if(s.track)
+                found = true;
+        });
+        if(!found) {
             stream.onaddtrack = null;
             stream.onremovetrack = null;
             c.close();
@@ -1267,28 +1295,28 @@ function stopStream(s) {
 }
 
 /**
- * closeUpMediaKind closes all up connections that correspond to a given
- * kind of media.  If kind is null, it closes all up connections.
+ * closeUpMedia closes all up connections with the given label.  If label
+ * is null, it closes all up connections.
  *
- * @param {string} kind
+ * @param {string} label
 */
-function closeUpMediaKind(kind) {
+function closeUpMedia(label) {
     for(let id in serverConnection.up) {
         let c = serverConnection.up[id];
-        if(kind && c.kind != kind)
+        if(label && c.label !== label)
             continue
         c.close();
     }
 }
 
 /**
- * @param {string} kind
+ * @param {string} label
  * @returns {Stream}
  */
-function findUpMedia(kind) {
+function findUpMedia(label) {
     for(let id in serverConnection.up) {
         let c = serverConnection.up[id]
-        if(c.kind === kind)
+        if(c.label === label)
             return c;
     }
     return null;
@@ -1302,7 +1330,7 @@ function muteLocalTracks(mute) {
         return;
     for(let id in serverConnection.up) {
         let c = serverConnection.up[id];
-        if(c.kind === 'local') {
+        if(c.label === 'camera') {
             let stream = c.stream;
             stream.getTracks().forEach(t => {
                 if(t.kind === 'audio') {
@@ -1383,7 +1411,7 @@ async function setMedia(c, isUp, mirror, video) {
     showVideo();
     resizePeers();
 
-    if(!isUp && isSafari() && !findUpMedia('local')) {
+    if(!isUp && isSafari() && !findUpMedia('camera')) {
         // Safari doesn't allow autoplay unless the user has granted media access
         try {
             let stream = await navigator.mediaDevices.getUserMedia({audio: true});
@@ -1433,11 +1461,19 @@ function addCustomControls(media, container, c) {
 
     let template =
         document.getElementById('videocontrols-template').firstElementChild;
+    let toptemplate =
+        document.getElementById('topvideocontrols-template').firstElementChild;
     controls = cloneHTMLElement(template);
     controls.id = 'controls-' + c.localId;
+    let topcontrols = cloneHTMLElement(toptemplate);
+    topcontrols.id = 'topcontrols-' + c.localId;
 
     let volume = getVideoButton(controls, 'volume');
-    if(c.kind === 'local') {
+    let stopsharing = getVideoButton(topcontrols, 'video-stop');
+    if (c.label !== "screenshare") {
+        stopsharing.remove();
+    }
+    if(c.label === 'camera') {
         volume.remove();
     } else {
         setVolumeButton(media.muted,
@@ -1445,8 +1481,9 @@ function addCustomControls(media, container, c) {
                         getVideoButton(controls, "volume-slider"));
     }
 
+    container.appendChild(topcontrols);
     container.appendChild(controls);
-    registerControlHandlers(media, container);
+    registerControlHandlers(media, container, c);
 }
 
 /**
@@ -1479,13 +1516,28 @@ function setVolumeButton(muted, button, slider) {
 /**
  * @param {HTMLVideoElement} media
  * @param {HTMLElement} container
+ * @param {Stream} c
  */
-function registerControlHandlers(media, container) {
+function registerControlHandlers(media, container, c) {
     let play = getVideoButton(container, 'video-play');
     if(play) {
         play.onclick = function(event) {
             event.preventDefault();
             media.play();
+        };
+    }
+
+    let stop = getVideoButton(container, 'video-stop');
+    if(stop) {
+        stop.onclick = function(event) {
+            event.preventDefault();
+            try {
+                c.close(true);
+                delMedia(c.localId);
+            } catch(e) {
+                console.error(e);
+                displayError(e);
+            }
         };
     }
 
@@ -1815,9 +1867,9 @@ async function gotJoined(kind, group, perms, message) {
     if(typeof RTCPeerConnection === 'undefined')
         displayWarning("This browser doesn't support WebRTC");
     else
-        this.request(getSettings().request);
+        this.request(mapRequest(getSettings().request));
 
-    if(serverConnection.permissions.present && !findUpMedia('local')) {
+    if(serverConnection.permissions.present && !findUpMedia('camera')) {
         if(present) {
             if(present === 'mike')
                 updateSettings({video: ''});
