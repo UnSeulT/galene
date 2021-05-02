@@ -291,17 +291,20 @@ function fillLogin() {
   */
 function setConnected(connected) {
     let userbox = document.getElementById('profile');
+    let userlogout = document.getElementById('user-logout');
     let connectionbox = document.getElementById('login-container');
     if(connected) {
         resetUsers();
         clearChat();
         userbox.classList.remove('invisible');
+        userlogout.classList.remove('invisible');
         connectionbox.classList.add('invisible');
         displayUsername();
     } else {
         resetUsers();
         fillLogin();
         userbox.classList.add('invisible');
+        userlogout.classList.add('invisible');
         connectionbox.classList.remove('invisible');
         displayError('Disconnected', 'error');
         hideVideo();

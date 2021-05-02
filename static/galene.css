@@ -99,7 +99,7 @@
     font-style: italic;
 }
 
-.sidenav .user-logout a {
+.user-logout a {
     font-size: 1em;
     padding: 7px 0 0;
     color: #e4157e;
@@ -738,10 +738,13 @@ h1 {
 #presentbutton, #unpresentbutton {
     white-space: nowrap;
     margin-right: 0.4em;
-    margin-top: .1em;
-    font-size: 1.1em;
-    text-align: left;
+    /*margin-top: .1em;*/
+    font-size: .8em;
+    /*text-align: left;*/
     /*width: 5.5em;*/
+}
+#presentbutton span, #unpresentbutton span{
+    display: block;
 }
 
 #videoselect {
