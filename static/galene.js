@@ -294,14 +294,12 @@ function setConnected(connected) {
     let userlogout = document.getElementById('user-logout');
     let connectionbox = document.getElementById('login-container');
     if(connected) {
-        resetUsers();
         clearChat();
         userbox.classList.remove('invisible');
         userlogout.classList.remove('invisible');
         connectionbox.classList.add('invisible');
         displayUsername();
     } else {
-        resetUsers();
         fillLogin();
         userbox.classList.add('invisible');
         userlogout.classList.add('invisible');
@@ -1712,9 +1710,6 @@ function resizePeers() {
     }
 }
 
-/** @type{Object<string,string>} */
-let users = {};
-
 /**
  * Lexicographic order, with case differences secondary.
  * @param{string} a
@@ -1741,9 +1736,6 @@ function stringCompare(a, b) {
 function addUser(id, name) {
     if(!name)
         name = null;
-    if(id in users)
-        throw new Error('Duplicate user id');
-    users[id] = name;
 
     let div = document.getElementById('users');
     let user = document.createElement('div');
@@ -1759,7 +1751,9 @@ function addUser(id, name) {
         let us = div.children;
         for(let i = 0; i < us.length; i++) {
             let child = us[i];
-            let childname = users[child.id.slice('user-'.length)] || null;
+            let childuser =
+                serverConnection.users[child.id.slice('user-'.length)] || null;
+            let childname = (childuser && childuser.username) || null;
             if(!childname || stringCompare(childname, name) > 0) {
                 div.insertBefore(user, child);
                 return;
@@ -1773,42 +1767,44 @@ function addUser(id, name) {
  * @param {string} id
  * @param {string} name
  */
-function delUser(id, name) {
-    if(!name)
-        name = null;
-    if(!(id in users))
-        throw new Error('Unknown user id');
-    if(users[id] !== name)
-        throw new Error('Inconsistent user name');
-    delete(users[id]);
+function changeUser(id, name) {
+    let user = document.getElementById('user-' + id);
+    if(!user) {
+        console.warn('Unknown user ' + id);
+        return;
+    }
+    user.textContent = name ? name : '(anon)';
+}
+
+/**
+ * @param {string} id
+ */
+function delUser(id) {
     let div = document.getElementById('users');
     let user = document.getElementById('user-' + id);
     div.removeChild(user);
 }
 
-function resetUsers() {
-    for(let id in users)
-        delUser(id, users[id]);
-}
-
 /**
  * @param {string} id
  * @param {string} kind
- * @param {string} name
  */
-function gotUser(id, kind, name) {
-    switch(kind) {
-    case 'add':
-        addUser(id, name);
-        break;
-    case 'delete':
-        delUser(id, name);
-        break;
-    default:
-        console.warn('Unknown user kind', kind);
-        break;
-    }
-}
+ function gotUser(id, kind) {
+     switch(kind) {
+     case 'add':
+         addUser(id, serverConnection.users[id].username);
+         break;
+     case 'delete':
+         delUser(id);
+         break;
+     case 'change':
+         changeUser(id, serverConnection.users[id].username);
+         break;
+     default:
+         console.warn('Unknown user kind', kind);
+         break;
+     }
+ }
 
 function displayUsername() {
     let userpass = getUserPass();
@@ -2057,8 +2053,10 @@ function addToChatbox(peerId, dest, nick, time, privileged, kind, message) {
             let header = document.createElement('p');
             if(peerId || nick || dest) {
                 let user = document.createElement('span');
+                let u = serverConnection.users[dest];
+                let name = (u && u.username);
                 user.textContent = dest ?
-                    `${nick||'(anon)'} \u2192 ${users[dest]||'(anon)'}` :
+                    `${nick||'(anon)'} \u2192 ${name || '(anon)'}` :
                     (nick || '(anon)');
                 user.classList.add('message-user');
                 header.appendChild(user);
@@ -2324,11 +2322,12 @@ function parseCommand(line) {
  * @param {string} user
  */
 function findUserId(user) {
-    if(user in users)
+    if(user in serverConnection.users)
         return user;
 
-    for(let id in users) {
-        if(users[id] === user)
+    for(let id in serverConnection.users) {
+        let u = serverConnection.users[id];
+        if(u && u.username === user)
             return id;
     }
     return null;
@@ -2444,6 +2443,24 @@ commands.wall = {
         serverConnection.userMessage('warning', '', r);
     },
 };
+
+commands.raise = {
+    description: 'raise hand',
+    f: (c, r) => {
+        serverConnection.userAction(
+            "setstatus", serverConnection.id, {"raisehand": true},
+        );
+    }
+}
+
+commands.unraise = {
+    description: 'unraise hand',
+    f: (c, r) => {
+        serverConnection.userAction(
+            "setstatus", serverConnection.id, {"raisehand": null},
+        );
+    }
+}
 
 /**
  * Test loopback through a TURN relay.
