@@ -2523,10 +2523,13 @@ commands['relay-test'] = {
     }
 }
 
+let previousInput = '';
+
 function handleInput() {
     let input = /** @type {HTMLTextAreaElement} */
         (document.getElementById('input'));
     let data = input.value;
+    previousInput = data;
     input.value = '';
 
     let message, me;
@@ -2542,11 +2545,11 @@ function handleInput() {
             let user, msg;
             let space = data.indexOf(' ');
             if(space < 0) {
-                data = data.slice(1);
+                data = "@username";
             } else {
                 user = data.slice(1, space);
                 msg = data.slice(space + 1);
-                data = user + ' ' + msg;
+                data = "@username" + ' ' + user + ' ' + msg;
             }
         }
         if(data.length > 1 && data[1] === '/') {
@@ -2614,6 +2617,12 @@ document.getElementById('input').onkeypress = function(e) {
     if(e.key === 'Enter' && !e.ctrlKey && !e.shiftKey && !e.metaKey) {
         e.preventDefault();
         handleInput();
+    }
+};
+document.getElementById('input').onkeydown = function(e) {
+    if(e.key === 'ArrowUp' && this.value=='') {
+        e.preventDefault();
+        this.value = previousInput;
     }
 };
 
